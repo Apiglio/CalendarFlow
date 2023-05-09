@@ -60,6 +60,7 @@ type
     Number:Integer;
     Rect:TRect;
   end;
+  TBeforeSelectEvent = procedure(Sender:TObject;var CanSelect:boolean) of object;
 
   TCustomCalendarFlow = class(TCustomPanel)
   private
@@ -90,7 +91,7 @@ type
   private
     FUpdating:Boolean;
     FOnDateChange:TNotifyEvent;
-    FOnBeforeSelect:TNotifyEvent;
+    FOnBeforeSelect:TBeforeSelectEvent;
     FOnAfterSelect:TNotifyEvent;
 
   public
@@ -117,7 +118,7 @@ type
     property Options:TCalendarOptions read FOptions write FOptions;
     property RowCount:Integer read FRowCount write FRowCount default 6;
     property OnDateChange:TNotifyEvent read FOnDateChange write FOnDateChange;//当前日期更改时执行。
-    property OnBeforeSelect:TNotifyEvent read FOnBeforeSelect write FOnBeforeSelect;//点击界面选中一个日期，在修改当前日期之前执行，无论日期是否有更改。
+    property OnBeforeSelect:TBeforeSelectEvent read FOnBeforeSelect write FOnBeforeSelect;//点击界面选中一个日期，在修改当前日期之前执行，无论日期是否有更改。
     property OnAfterSelect:TNotifyEvent read FOnAfterSelect write FOnAfterSelect;//点击界面选中一个日期，在修改当前日期之后执行，无论日期是否有更改。
 
   end;
@@ -502,6 +503,7 @@ begin
 end;
 procedure TCustomCalendarFlow.MouseUp(Sender:TObject;Button:TMouseButton;Shift:TShiftState;X,Y:Integer);
 var pi:integer;
+    CanSelect,DataChange:boolean;
     function Contains(APoint:TPoint;ARect:TRect):boolean;
     begin
       result:=false;
@@ -514,9 +516,12 @@ var pi:integer;
 begin
   for pi:=0 to Length(FDays)-1 do begin
     if Contains(Classes.Point(X,Y),FDays[pi].Rect) then begin
-      if assigned(FOnBeforeSelect) then FOnBeforeSelect(Self);
-      if assigned(FOnDateChange) and (FDays[pi].Date<>FDateCurrent) then FOnDateChange(Self);
+      CanSelect:=true;
+      if assigned(FOnBeforeSelect) then FOnBeforeSelect(Self,CanSelect);
+      if not CanSelect then exit;
+      DataChange:=FDays[pi].Date<>FDateCurrent;
       FDateCurrent:=FDays[pi].Date;
+      if assigned(FOnDateChange) and DataChange then FOnDateChange(Self);
       Paint;
       if assigned(FOnAfterSelect) then FOnAfterSelect(Self);
       exit;
