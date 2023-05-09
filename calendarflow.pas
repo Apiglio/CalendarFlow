@@ -8,8 +8,8 @@ uses
   Classes, SysUtils, LResources, Forms, Controls, Graphics, Dialogs, ExtCtrls;
 
 const
-  weektitle_zh:array[1..7] of string = ('周一','周二','周三','周四','周五','周六','周日');
-  weektitle_en:array[1..7] of string = ('MON','TUE','WED','THU','FRI','SAT','SUN');
+  weektitle_zh:array[0..7] of string = ('周日','周一','周二','周三','周四','周五','周六','周日');
+  weektitle_en:array[0..7] of string = ('SUN','MON','TUE','WED','THU','FRI','SAT','SUN');
   monthtitle_zh:array[1..12] of string = ('一月','二月','三月','四月','五月','六月','七月','八月','九月','十月','十一月','十二月');
   monthtitle_en:array[1..12] of string = ('JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC');
 
@@ -48,7 +48,8 @@ type
                      coAutoVerticalCellSize,   //自动分配垂直方格大小
                      coShowWeekCell,           //显示周行标
                      coShowMonthCell,          //显示月行标
-                     coShowYearCell            //显示年行标
+                     coShowYearCell,           //显示年行标
+                     coBeginWithSunday         //以周日为一周的开始
                      );
   TCalendarOptions = set of TCalendarOption;
   TDayRect = packed record
@@ -60,7 +61,7 @@ type
     Rect:TRect;
   end;
 
-  TCalendarFlow = class(TPanel)
+  TCustomCalendarFlow = class(TCustomPanel)
   private
     FCalendarFlowSize:TCalendarCellSize;
     FCalendarApperance:TCalendarApperance;
@@ -78,7 +79,9 @@ type
 
 
   private
+    function GetWeekNumber(date:TDate):integer;
     procedure Paint; override;
+    function MousePosDelta(MousePos:TPoint):integer;
     procedure MouseUp(Sender:TObject;Button:TMouseButton;Shift:TShiftState;X,Y:Integer);
     procedure MouseWheel(Sender: TObject; Shift: TShiftState;
       WheelDelta: Integer; MousePos: TPoint; var Handled: Boolean);
@@ -87,11 +90,12 @@ type
   private
     FUpdating:Boolean;
     FOnDateChange:TNotifyEvent;
+    FOnBeforeSelect:TNotifyEvent;
+    FOnAfterSelect:TNotifyEvent;
 
   public
     procedure BeginUpdate;
     procedure EndUpdate;
-    property OnMouseWheel;
 
   //DateCountIn
   public
@@ -108,12 +112,77 @@ type
   public
     constructor Create(TheOwner: TComponent); override;
     destructor Destroy; override;
-  published
+  public
     property CellSize:TCalendarCellSize read FCalendarFlowSize;
     property Options:TCalendarOptions read FOptions write FOptions;
     property RowCount:Integer read FRowCount write FRowCount default 6;
-    property OnDateChange:TNotifyEvent read FOnDateChange write FOnDateChange;
+    property OnDateChange:TNotifyEvent read FOnDateChange write FOnDateChange;//当前日期更改时执行。
+    property OnBeforeSelect:TNotifyEvent read FOnBeforeSelect write FOnBeforeSelect;//点击界面选中一个日期，在修改当前日期之前执行，无论日期是否有更改。
+    property OnAfterSelect:TNotifyEvent read FOnAfterSelect write FOnAfterSelect;//点击界面选中一个日期，在修改当前日期之后执行，无论日期是否有更改。
 
+  end;
+
+  TCalendarFlow = class(TCustomCalendarFlow)
+  published
+    property CellSize;
+    property Options;
+    property RowCount default 6;
+    property OnDateChange;
+    property OnBeforeSelect;
+    property OnAfterSelect;
+  published
+    property Align;
+    property Alignment;
+    property Anchors;
+    property AutoSize;
+    property BorderSpacing;
+    property BevelColor;
+    property BevelInner;
+    property BevelOuter;
+    property BevelWidth;
+    property BidiMode;
+    property BorderWidth;
+    property BorderStyle;
+    property Caption;
+    property ChildSizing;
+    property ClientHeight;
+    property ClientWidth;
+    property Color;
+    property Constraints;
+    property DockSite;
+    property DragCursor;
+    property DragKind;
+    property DragMode;
+    property Enabled;
+    property FullRepaint;
+    property ParentBidiMode;
+    property ParentColor;
+    property ParentFont;
+    property ParentShowHint;
+    property PopupMenu;
+    property ShowHint;
+    property TabOrder;
+    property TabStop;
+    property UseDockManager default True;
+    property Visible;
+    property OnContextPopup;
+    property OnDockDrop;
+    property OnDockOver;
+    property OnDragDrop;
+    property OnDragOver;
+    property OnEndDock;
+    property OnEndDrag;
+    property OnEnter;
+    property OnExit;
+    property OnGetSiteInfo;
+    property OnGetDockCaption;
+    property OnMouseEnter;
+    property OnMouseLeave;
+    property OnPaint;
+    property OnResize;
+    property OnStartDock;
+    property OnStartDrag;
+    property OnUnDock;
   end;
 
 procedure Register;
@@ -143,7 +212,7 @@ begin
   inherited Destroy;
 end;
 
-{ TCalendarFlow }
+{ TCustomCalendarFlow }
 
 function compare_date(Item1,Item2:Pointer):Integer;
 begin
@@ -152,7 +221,7 @@ begin
   else result:=0;
 end;
 
-procedure TCalendarFlow.CountInDate(ADate:TDate);
+procedure TCustomCalendarFlow.CountInDate(ADate:TDate);
 var dtmp:pdouble;
 begin
   getmem(dtmp,sizeof(double));
@@ -161,7 +230,7 @@ begin
   //FDateCountIn.Sort(@compare_date);
   if not FUpdating then Paint;
 end;
-procedure TCalendarFlow.CountOutDate(ADate:TDate);
+procedure TCustomCalendarFlow.CountOutDate(ADate:TDate);
 var pi:integer;
 begin
   pi:=0;
@@ -174,7 +243,7 @@ begin
     end;
   end;
 end;
-function TCalendarFlow.DateCounted(ADate:TDate):boolean;
+function TCustomCalendarFlow.DateCounted(ADate:TDate):boolean;
 var pi:integer;
 begin
   pi:=0;
@@ -185,7 +254,7 @@ begin
   end;
   result:=false;
 end;
-procedure TCalendarFlow.ClearCountDate;
+procedure TCustomCalendarFlow.ClearCountDate;
 begin
   while FDateCountIn.Count>0 do begin
     freemem(pdouble(FDateCountIn.Items[0]),sizeof(double));
@@ -193,7 +262,7 @@ begin
   end;
 end;
 
-procedure TCalendarFlow.SetCurrentDate(ADate:TDate);
+procedure TCustomCalendarFlow.SetCurrentDate(ADate:TDate);
 begin
   FDateCurrent:=ADate;
   FDateTop:=ADate-7;
@@ -201,18 +270,34 @@ begin
   if not FUpdating then Paint;
 end;
 
-procedure TCalendarFlow.Refresh;
+procedure TCustomCalendarFlow.Refresh;
 begin
   Paint;
 end;
 
-procedure TCalendarFlow.Paint;
+function TCustomCalendarFlow.GetWeekNumber(date:TDate):integer;
+var yy,mm,dd:word;
+    jan1st:TDate;
+    daycount:int64;
+    dow:byte;
+begin
+  decodeDate(date,yy,mm,dd);
+  jan1st:=EncodeDate(yy,1,1);
+  dow:=DayOfWeek(jan1st);
+  if coBeginWithSunday in Options then
+    daycount:=trunc(date)-trunc(jan1st)+(dow-1) mod 7
+  else
+    daycount:=trunc(date)-trunc(jan1st)+(dow-2) mod 7;
+  result:=daycount div 7 + 1;
+end;
+
+procedure TCustomCalendarFlow.Paint;
 const boundary = 1;
 var FirstDate,LastDate:TDate;
     pi,px,py,len:int64;
     ww,hh,x1,y1,x2,y2,fw,fh:integer;
     yy,mm,dd:word;
-    CellAreaWidth,CellAreaHeight,MonthBeltLeft:integer;
+    CellAreaWidth,CellAreaHeight,MonthBeltLeft,WeekBeltLeft:integer;
     cell_rect:TRect;
     stmp:string;
     function offset(ARect:TRect;boundary:integer):TRect;
@@ -237,7 +322,10 @@ begin
   Canvas.Pen.Color:=clNone;
   Canvas.Clear;
 
-  FirstDate:=FDateTop - DayOfWeek(FDateTop) mod 7 - 5;
+  if coBeginWithSunday in Options then
+    FirstDate:=FDateTop - DayOfWeek(FDateTop) -7+1
+  else
+    FirstDate:=FDateTop - DayOfWeek(FDateTop) -7+2;
   if coAutoVerticalCellSize in FOptions then begin
     CellAreaHeight:=Height - FCalendarFlowSize.TitleHeight;
     FCalendarFlowSize.CellHeight:=CellAreaHeight div FRowCount;
@@ -265,11 +353,13 @@ begin
   hh:=FCalendarFlowSize.CellHeight;
   DecodeDate(FirstDate,yy,mm,dd);
 
+  WeekBeltLeft:=0;
   if coShowYearCell in Options then begin
     MonthBeltLeft:=FCalendarFlowSize.BeltWidth;
     SetLength(FYears,1);
     FYears[0].Rect:=Classes.Rect(0,-2*hh,FCalendarFlowSize.BeltWidth,0);
     FYears[0].Number:=yy;
+    inc(WeekBeltLeft,FCalendarFlowSize.BeltWidth);
   end else begin
     MonthBeltLeft:=0;
   end;
@@ -277,6 +367,13 @@ begin
     SetLength(FMonths,1);
     FMonths[0].Rect:=Classes.Rect(MonthBeltLeft,-hh,MonthBeltLeft+FCalendarFlowSize.BeltWidth,0);
     FMonths[0].Number:=mm;
+    inc(WeekBeltLeft,FCalendarFlowSize.BeltWidth);
+  end;
+  inc(WeekBeltLeft,7*FCalendarFlowSize.CellWidth);
+  if coShowWeekCell in Options then begin
+    SetLength(FWeeks,1);
+    FWeeks[0].Rect:=Classes.Rect(WeekBeltLeft,-hh,Width,0);
+    FWeeks[0].Number:=0;
   end;
 
   FOR pi:=floor(double(FirstDate)) TO floor(double(LastDate)) DO BEGIN
@@ -308,6 +405,14 @@ begin
         FYears[len].Rect:=Classes.Rect(0,{tmp}y2,FCalendarFlowSize.BeltWidth,{tmp}y2);
       end;
     end;
+    if ((px=0) or (mm=1) and (dd=1)) and (coShowWeekCell in Options) then begin
+      len:=Length(FWeeks);
+      {tmp}y2:=FCalendarFlowSize.TitleHeight+floor(py/7)*hh;
+      FWeeks[len-1].Rect.Bottom:={tmp}y2;
+      SetLength(FWeeks,len+1);
+      FWeeks[len].Number:=GetWeekNumber(TDate(double(pi)));
+      FWeeks[len].Rect:=Classes.Rect(WeekBeltLeft,{tmp}y2,Width,{tmp}y2);
+    end;
 
     stmp:=IntToStr(dd);
     x1:=px*ww;
@@ -330,6 +435,7 @@ begin
     px:=(px+1) mod 7;
     py:=py+1;
   END;
+  //特殊列绘制
   Canvas.Brush.Color:=FCalendarApperance.Color;
   if coShowYearCell in Options then begin
     len:=Length(FYears);
@@ -357,14 +463,30 @@ begin
       end;
     end;
   end;
+  if coShowWeekCell in Options then begin
+    len:=Length(FWeeks);
+    FWeeks[len-1].Rect.Bottom:=cell_rect.Bottom;
+    for pi:=0 to len-1 do begin
+      stmp:='第'+IntToStr(FWeeks[pi].Number)+'周';
+      fw:=Canvas.TextWidth(stmp);
+      fh:=Canvas.TextHeight(stmp);
+      with FWeeks[pi] do begin
+        Canvas.Rectangle(offset(Rect,boundary));
+        Canvas.TextRect(Rect,Rect.Left+(Rect.Width - fw) div 2,Rect.Top+(Rect.Height - fh) div 2,stmp);
+      end;
+    end;
+  end;
+  //标题绘制
   Canvas.Brush.Color:=FCalendarApperance.ColorBgm;
   with FCalendarFlowSize do begin
     if coShowYearCell in Options then
       Canvas.Rectangle(Classes.Rect(0,0,BeltWidth,TitleHeight));
     if coShowMonthCell in Options then
       Canvas.Rectangle(Classes.Rect(MonthBeltLeft,0,MonthBeltLeft+BeltWidth,TitleHeight));
-    px:=MonthBeltLeft+BeltWidth;
-    for pi:=1 to 7 do begin
+    px:=MonthBeltLeft;
+    if coShowMonthCell in Options then inc(px,BeltWidth);
+    if coBeginWithSunday in Options then {tmp}len:=0 else {tmp}len:=1;
+    for pi:={tmp}len to {tmp}len+6 do begin
       {tmp}py:=px+FCalendarFlowSize.CellWidth;
       cell_rect:=Classes.Rect(px,0,{tmp}py,TitleHeight);
       stmp:=weektitle_zh[pi];
@@ -375,10 +497,10 @@ begin
       px:={tmp}py;
     end;
     if coShowWeekCell in Options then
-      Canvas.Rectangle(Classes.Rect(px,0,px+BeltWidth,TitleHeight));
+      Canvas.Rectangle(Classes.Rect(px,0,Width,TitleHeight));
   end;
 end;
-procedure TCalendarFlow.MouseUp(Sender:TObject;Button:TMouseButton;Shift:TShiftState;X,Y:Integer);
+procedure TCustomCalendarFlow.MouseUp(Sender:TObject;Button:TMouseButton;Shift:TShiftState;X,Y:Integer);
 var pi:integer;
     function Contains(APoint:TPoint;ARect:TRect):boolean;
     begin
@@ -392,34 +514,56 @@ var pi:integer;
 begin
   for pi:=0 to Length(FDays)-1 do begin
     if Contains(Classes.Point(X,Y),FDays[pi].Rect) then begin
+      if assigned(FOnBeforeSelect) then FOnBeforeSelect(Self);
+      if assigned(FOnDateChange) and (FDays[pi].Date<>FDateCurrent) then FOnDateChange(Self);
       FDateCurrent:=FDays[pi].Date;
-      if assigned(FOnDateChange) then FOnDateChange(Self);
       Paint;
+      if assigned(FOnAfterSelect) then FOnAfterSelect(Self);
       exit;
     end;
   end;
 end;
-procedure TCalendarFlow.MouseWheel(Sender: TObject; Shift: TShiftState;
-  WheelDelta: Integer; MousePos: TPoint; var Handled: Boolean);
+function TCustomCalendarFlow.MousePosDelta(MousePos:TPoint):integer;
+var sy,sm:boolean;
+    col:integer;
 begin
+  result:=0;
+  if MousePos.Y<CellSize.TitleHeight then exit;
+  result:=7;
+  sy:=coShowYearCell in Options;
+  sm:=coShowMonthCell in Options;
+  if not (sy or sm) then exit;
+  result:=30;
+  col:=MousePos.X div CellSize.BeltWidth;
+  if sy and sm and (col=1) then exit;
+  if (not sy) and sm and (col<1) then exit;
+  result:=365;
+  if sy and (col<1) then exit;
+  result:=7;
+end;
+procedure TCustomCalendarFlow.MouseWheel(Sender: TObject; Shift: TShiftState;
+  WheelDelta: Integer; MousePos: TPoint; var Handled: Boolean);
+var base:integer;
+begin
+  base:=MousePosDelta(MousePos);
   if WheelDelta>0 then begin
-    FDateTop:=FDateTop-7;
+    FDateTop:=FDateTop-base;
   end else begin
-    FDateTop:=FDateTop+7;
+    FDateTop:=FDateTop+base;
   end;
-  Paint;//变换大小后第一次滚轮之后重绘有问题
+  if base<>0 then Paint;//变换大小后第一次滚轮之后重绘有问题
 end;
 
-procedure TCalendarFlow.BeginUpdate;
+procedure TCustomCalendarFlow.BeginUpdate;
 begin
   FUpdating:=true;
 end;
-procedure TCalendarFlow.EndUpdate;
+procedure TCustomCalendarFlow.EndUpdate;
 begin
   FUpdating:=false;
 end;
 
-constructor TCalendarFlow.Create(TheOwner: TComponent);
+constructor TCustomCalendarFlow.Create(TheOwner: TComponent);
 begin
   inherited Create(TheOwner);
   FCalendarFlowSize:=TCalendarCellSize.Create;
@@ -441,7 +585,7 @@ begin
 
 end;
 
-destructor TCalendarFlow.Destroy;
+destructor TCustomCalendarFlow.Destroy;
 begin
   ClearCountDate;
   FCalendarFlowSize.Free;
