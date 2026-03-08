@@ -13,6 +13,8 @@ const
   monthtitle_zh:array[1..12] of string = ('一月','二月','三月','四月','五月','六月','七月','八月','九月','十月','十一月','十二月');
   monthtitle_en:array[1..12] of string = ('JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC');
 
+  RectInnerBoundary = 1;
+
 type
 
   TCalendarCellSize = class
@@ -77,12 +79,14 @@ type
     FMonths:array of TNumberRect;
     FYears:array of TNumberRect;
     FWeeks:array of TNumberRect;
+    FDayHoverIndex:Integer; //Mouse Hover FDays index
 
 
   private
     function GetWeekNumber(date:TDate):integer;
     procedure Paint; override;
     function MousePosDelta(MousePos:TPoint):integer;
+    procedure MouseMove(Sender: TObject; Shift: TShiftState; X,Y: Integer);
     procedure MouseUp(Sender:TObject;Button:TMouseButton;Shift:TShiftState;X,Y:Integer);
     procedure MouseWheel(Sender: TObject; Shift: TShiftState;
       WheelDelta: Integer; MousePos: TPoint; var Handled: Boolean);
@@ -292,8 +296,15 @@ begin
   result:=daycount div 7 + 1;
 end;
 
+function RectInnerOffset(ARect:TRect;boundary:integer):TRect;
+begin
+  result.Top:=ARect.Top+boundary;
+  result.Left:=ARect.Left+boundary;
+  result.Right:=ARect.Right-boundary;
+  result.Bottom:=ARect.Bottom-boundary;
+end;
+
 procedure TCustomCalendarFlow.Paint;
-const boundary = 1;
 var FirstDate,LastDate:TDate;
     pi,px,py,len:int64;
     ww,hh,x1,y1,x2,y2,fw,fh:integer;
@@ -301,13 +312,6 @@ var FirstDate,LastDate:TDate;
     CellAreaWidth,CellAreaHeight,MonthBeltLeft,WeekBeltLeft:integer;
     cell_rect:TRect;
     stmp:string;
-    function offset(ARect:TRect;boundary:integer):TRect;
-    begin
-      result.Top:=ARect.Top+boundary;
-      result.Left:=ARect.Left+boundary;
-      result.Right:=ARect.Right-boundary;
-      result.Bottom:=ARect.Bottom-boundary;
-    end;
 
 begin
   //Inherited Paint;
@@ -321,6 +325,8 @@ begin
   Canvas.Brush.Color:=FCalendarApperance.ColorBgm;
   Canvas.Brush.Style:=bsSolid;
   Canvas.Pen.Color:=clNone;
+  Canvas.Pen.Style:=psSolid;
+  Canvas.Pen.Width:=1;
   Canvas.Clear;
 
   if coBeginWithSunday in Options then
@@ -431,7 +437,7 @@ begin
     FDays[len].Rect:=cell_rect;
     FDays[len].Date:=TDate(double(pi));
 
-    Canvas.Rectangle(offset(cell_rect,boundary));
+    Canvas.Rectangle(RectInnerOffset(cell_rect,RectInnerBoundary));
     Canvas.TextRect(cell_rect,x1+(ww-fw) div 2,y1+(hh-fh) div 2,stmp);
     px:=(px+1) mod 7;
     py:=py+1;
@@ -446,7 +452,7 @@ begin
       fw:=Canvas.TextWidth(stmp);
       fh:=Canvas.TextHeight(stmp);
       with FYears[pi] do begin
-        Canvas.Rectangle(offset(Rect,boundary));
+        Canvas.Rectangle(RectInnerOffset(Rect,RectInnerBoundary));
         Canvas.TextRect(Rect,Rect.Left+(Rect.Width - fw) div 2,Rect.Top+(Rect.Height - fh) div 2,stmp);
       end;
     end;
@@ -459,7 +465,7 @@ begin
       fw:=Canvas.TextWidth(stmp);
       fh:=Canvas.TextHeight(stmp);
       with FMonths[pi] do begin
-        Canvas.Rectangle(offset(Rect,boundary));
+        Canvas.Rectangle(RectInnerOffset(Rect,RectInnerBoundary));
         Canvas.TextRect(Rect,Rect.Left+(Rect.Width - fw) div 2,Rect.Top+(Rect.Height - fh) div 2,stmp);
       end;
     end;
@@ -472,7 +478,7 @@ begin
       fw:=Canvas.TextWidth(stmp);
       fh:=Canvas.TextHeight(stmp);
       with FWeeks[pi] do begin
-        Canvas.Rectangle(offset(Rect,boundary));
+        Canvas.Rectangle(RectInnerOffset(Rect,RectInnerBoundary));
         Canvas.TextRect(Rect,Rect.Left+(Rect.Width - fw) div 2,Rect.Top+(Rect.Height - fh) div 2,stmp);
       end;
     end;
@@ -500,6 +506,94 @@ begin
     if coShowWeekCell in Options then
       Canvas.Rectangle(Classes.Rect(px,0,Width,TitleHeight));
   end;
+end;
+procedure TCustomCalendarFlow.MouseMove(Sender: TObject; Shift: TShiftState; X,Y: Integer);
+var len,idx:integer;
+    tmpPt:TPoint;
+    OldDayHoverIndex:Integer;
+    OldDate, NewDate, SelDate:TDate;
+    cell_caption:string;
+    yy,mm,dd:word;
+begin
+
+  if Y<=FCalendarFlowSize.TitleHeight then exit; //如果鼠标指向标题栏，不刷新
+  tmpPt.x:=X;
+  tmpPt.y:=Y;
+  len:=Length(FDays);
+  OldDayHoverIndex:=FDayHoverIndex;
+  FDayHoverIndex:=-1;
+  for idx:=len-1 downto 0 do begin
+    if FDays[idx].Rect.Contains(tmpPT) then FDayHoverIndex:=idx;
+  end;
+
+  Canvas.Brush.Color:=FCalendarApperance.Color;
+  Canvas.Brush.Style:=bsSolid;
+  Canvas.Pen.Color:=clNone;
+  Canvas.Pen.Style:=psSolid;
+  Canvas.Pen.Width:=1;
+  Canvas.Font:=FCalendarApperance.Font;
+
+  SelDate:=TDate(floor(double(FDateCurrent)));
+  if (OldDayHoverIndex>=0) and (OldDayHoverIndex<>FDayHoverIndex) then begin
+    //重绘非高亮
+    OldDate:=FDays[OldDayHoverIndex].Date;
+    if OldDate=SelDate then begin
+      Canvas.Brush.Color:=FCalendarApperance.ColorSel;
+    end else if DateCounted(OldDate) then begin
+      Canvas.Brush.Color:=FCalendarApperance.ColorCnt;
+    end else begin
+      Canvas.Brush.Color:=FCalendarApperance.Color;
+    end;
+    DecodeDate(FDays[OldDayHoverIndex].Date,yy,mm,dd);
+    cell_caption:=IntToStr(dd);
+    Canvas.Rectangle(RectInnerOffset(FDays[OldDayHoverIndex].Rect,RectInnerBoundary));
+    Canvas.TextRect(
+      FDays[OldDayHoverIndex].Rect,
+      FDays[OldDayHoverIndex].Rect.Left + (FCalendarFlowSize.CellWidth - Canvas.TextWidth(cell_caption)) div 2,
+      FDays[OldDayHoverIndex].Rect.Top + (FCalendarFlowSize.CellHeight - Canvas.TextHeight(cell_caption)) div 2,
+      cell_caption
+    );
+  end;
+
+  if FDayHoverIndex>=0 then begin
+    NewDate:=FDays[FDayHoverIndex].Date;
+    //绘制高亮
+    if NewDate=SelDate then begin
+      Canvas.Brush.Color:=FCalendarApperance.ColorSel;
+    end else if DateCounted(NewDate) then begin
+      Canvas.Brush.Color:=FCalendarApperance.ColorCnt;
+    end else begin
+      Canvas.Brush.Color:=FCalendarApperance.Color;
+    end;
+
+    DecodeDate(FDays[FDayHoverIndex].Date,yy,mm,dd);
+    cell_caption:=IntToStr(dd);
+    Canvas.Rectangle(RectInnerOffset(FDays[FDayHoverIndex].Rect,RectInnerBoundary));
+
+    if NewDate=SelDate then begin
+      Canvas.Pen.Width:=1;
+      Canvas.Pen.Style:=psSolid;
+      Canvas.Brush.Style:=bsSolid;
+      Canvas.Pen.Color:=FCalendarApperance.ColorCnt;
+      Canvas.Brush.Color:=FCalendarApperance.ColorCnt;
+      Canvas.Rectangle(RectInnerOffset(FDays[FDayHoverIndex].Rect,RectInnerBoundary+4));
+    end else begin
+      Canvas.Pen.Width:=1;
+      Canvas.Pen.Style:=psSolid;
+      Canvas.Brush.Style:=bsClear;
+      Canvas.Pen.Color:=FCalendarApperance.ColorSel;
+      Canvas.Brush.Color:=FCalendarApperance.Color;
+      Canvas.Rectangle(RectInnerOffset(FDays[FDayHoverIndex].Rect,RectInnerBoundary+2));
+    end;
+
+    Canvas.TextRect(
+      FDays[FDayHoverIndex].Rect,
+      FDays[FDayHoverIndex].Rect.Left + (FCalendarFlowSize.CellWidth - Canvas.TextWidth(cell_caption)) div 2,
+      FDays[FDayHoverIndex].Rect.Top + (FCalendarFlowSize.CellHeight - Canvas.TextHeight(cell_caption)) div 2,
+      cell_caption
+    );
+  end;
+
 end;
 procedure TCustomCalendarFlow.MouseUp(Sender:TObject;Button:TMouseButton;Shift:TShiftState;X,Y:Integer);
 var pi:integer;
@@ -566,6 +660,7 @@ end;
 procedure TCustomCalendarFlow.EndUpdate;
 begin
   FUpdating:=false;
+  Refresh;
 end;
 
 constructor TCustomCalendarFlow.Create(TheOwner: TComponent);
@@ -586,7 +681,9 @@ begin
   //FOptions:=FOptions + [coAutoHorizontalCellSize,coAutoVerticalCellSize];
   OnMouseWheel:=@MouseWheel;
   OnMouseUp:=@MouseUp;
+  OnMouseMove:=@MouseMove;
   FUpdating:=false;
+  FDayHoverIndex:=-1;
 
 end;
 
